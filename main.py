@@ -22,9 +22,9 @@ logging.basicConfig(
 locale.setlocale(locale.LC_ALL, '')
 
 COMMANDS = [
+    BotCommand("portfolio", "Показать баланс портфеля"),
     BotCommand("add",       "Добавить BTC‑адрес"),
     BotCommand("remove",    "Удалить адрес"),
-    BotCommand("portfolio", "Показать баланс портфеля"),
     BotCommand("balance",   "Баланс отдельного адреса"),
     BotCommand("help",      "Справка"),
 ]
