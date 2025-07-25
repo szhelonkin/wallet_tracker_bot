@@ -6,7 +6,7 @@ API_URL = "https://blockstream.info/api/address/{addr}"  # нужный преф
 
 def satoshi_to_btc(value: int) -> str:
     """Красиво конвертируем сатоши → BTC c 8 знаками."""
-    return f"{Decimal(value) / Decimal(1e8):.8f} BTC"
+    return Decimal(value) / Decimal(1e8)
 
 def fetch_balance_btc(addr: str) -> int:
     """Запрашиваем баланс адреса в сатоши."""
