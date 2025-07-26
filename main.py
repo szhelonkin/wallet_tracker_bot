@@ -10,7 +10,7 @@ import locale
 
 from db import init_db_sync, add_address, remove_address, list_addresses
 from btc import get_balances_btc, fetch_balance_btc, satoshi_to_btc
-from eth import is_addr_eth, fetch_balance_eth
+from eth import is_addr_eth, fetch_balance_eth, get_balances_eth
 from cg import get_prices
 
 # ---------- базовая настройка ----------
@@ -121,7 +121,7 @@ async def portfolio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             total_sat += bal
             lines.append(f"`{addr[:10]}…` — {satoshi_to_btc(bal):.4f} ฿")
 
-    prices = get_prices("bitcoin", "usd,rub")
+    prices = get_prices("bitcoin,ethereum", "usd,rub")
     total_btc = satoshi_to_btc(total_sat)
     price_btc_usd = Decimal(prices["bitcoin"]['usd'])
     price_btc_rub = Decimal(prices["bitcoin"]['rub'])
@@ -130,7 +130,34 @@ async def portfolio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     lines.append(f"Цена  {format_num(price_btc_usd)} $  {format_num(price_btc_rub)} ₽")
     lines.append("────────────────────────")
-    lines.append(f"*Итого:*  {total_btc:.2f} ฿  {format_num(total_usd)} $  {format_num(total_rub)} ₽")
+    lines.append(f"*BTC:*  {total_btc:.2f} ฿  {format_num(total_usd)} $  {format_num(total_rub)} ₽")
+
+    eth_addrs = filter_eth_addresses(addrs)
+    eth_balances = await get_balances_eth(eth_addrs)
+    lines.append("")
+    lines.append("*Эфир*")
+    total_eth = 0
+    for addr, bal in eth_balances.items():
+        if isinstance(bal, Exception):
+            lines.append(f"⚠️ {addr[:10]}… — ошибка API")
+        else:
+            total_eth += bal
+            lines.append(f"`{addr[:10]}…` — {bal:.4f} Ξ")
+    price_eth_usd = Decimal(prices["ethereum"]['usd'])
+    price_eth_rub = Decimal(prices["ethereum"]['rub'])
+    total_usd_eth = total_eth * price_eth_usd
+    total_rub_eth = total_eth * price_eth_rub
+
+    lines.append(f"Цена  {format_num(price_eth_usd)} $  {format_num(price_eth_rub)} ₽")
+    lines.append("────────────────────────")
+    lines.append(f"*ETH:*  {total_eth:.2f} Ξ  {format_num(total_usd_eth)} $  {format_num(total_rub_eth)} ₽")
+
+    lines.append("")
+    total_usd += total_usd_eth
+    total_rub += total_rub_eth
+    lines.append("────────────────────────")
+    lines.append(f"*Итого:*  {format_num(total_usd)} $  {format_num(total_rub)} ₽")
+
 
     await update.message.reply_text(
         "\n".join(lines), parse_mode="Markdown"
