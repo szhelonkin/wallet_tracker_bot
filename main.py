@@ -10,6 +10,7 @@ import locale
 
 from db import init_db_sync, add_address, remove_address, list_addresses
 from btc import get_balances_btc, fetch_balance_btc, satoshi_to_btc
+from eth import is_addr_eth, fetch_balance_eth
 from cg import get_prices
 
 # ---------- базовая настройка ----------
@@ -87,6 +88,20 @@ async def balance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     except Exception as e:
         await update.message.reply_text(f"⚠️ Что‑то пошло не так: {e}")
 
+def filter_btc_addresses(addrs):
+	btc_addrs = []
+	for addr in addrs:
+		if is_addr_eth(addr) == False:
+			btc_addrs.append(addr)
+	return btc_addrs
+
+def filter_eth_addresses(addrs):
+	eth_addrs = []
+	for addr in addrs:
+		if is_addr_eth(addr) == True:
+			eth_addrs.append(addr)
+	return eth_addrs
+
 async def portfolio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text("⏳ Считаю портфель…")
     addrs = await list_addresses(update.effective_user.id)
@@ -94,8 +109,10 @@ async def portfolio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await update.message.reply_text("У тебя пока нет адресов. Добавь через /add.")
         return
 
-    balances = await get_balances_btc(addrs)
-    lines = ["*💼 Портфель*"] 
+    btc_addrs = filter_btc_addresses(addrs)
+    balances = await get_balances_btc(btc_addrs)
+    lines = ["*💼 Портфель*"]
+    lines.append("*Биткоин*") 
     total_sat = 0
     for addr, bal in balances.items():
         if isinstance(bal, Exception):
@@ -106,9 +123,12 @@ async def portfolio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     prices = get_prices("bitcoin", "usd,rub")
     total_btc = satoshi_to_btc(total_sat)
-    total_usd = total_btc * Decimal(prices["bitcoin"]['usd'])
-    total_rub = total_btc * Decimal(prices["bitcoin"]['rub'])
+    price_btc_usd = Decimal(prices["bitcoin"]['usd'])
+    price_btc_rub = Decimal(prices["bitcoin"]['rub'])
+    total_usd = total_btc * price_btc_usd
+    total_rub = total_btc * price_btc_rub
 
+    lines.append(f"Цена  {format_num(price_btc_usd)} $  {format_num(price_btc_rub)} ₽")
     lines.append("────────────────────────")
     lines.append(f"*Итого:*  {total_btc:.2f} ฿  {format_num(total_usd)} $  {format_num(total_rub)} ₽")
 
