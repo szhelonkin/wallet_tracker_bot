@@ -27,7 +27,7 @@ COMMANDS = [
     BotCommand("add",       "Добавить BTC‑адрес"),
     BotCommand("remove",    "Удалить адрес"),
     BotCommand("balance",   "Баланс отдельного адреса"),
-    BotCommand("start",      "Справка"),
+    BotCommand("help",      "Справка"),
 ]
 
 def format_num(num):
@@ -170,7 +170,7 @@ def main() -> None:
 
     application = Application.builder().token(TOKEN).post_init(setup_commands).build()
 
-    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", start))
     application.add_handler(CommandHandler("add", add_cmd))
     application.add_handler(CommandHandler("remove", remove_cmd))
     application.add_handler(CommandHandler("balance", balance_cmd))
