@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import json
 from decimal import Decimal
 import requests
 from dotenv import load_dotenv
@@ -137,6 +138,9 @@ async def portfolio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     lines.append(f"Цена  {format_num(price_eth_usd)} $  {format_num(price_eth_rub)} ₽")
     lines.append("────────────────────────")
     lines.append(f"*ETH:*  {total_eth:.2f} Ξ  {format_num(total_usd_eth)} $  {format_num(total_rub_eth)} ₽")
+
+    lines.append("")
+    lines.append("*DeFi*")
 
     lines.append("")
     total_usd += total_usd_eth

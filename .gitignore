@@ -1,5 +1,5 @@
 .env
 wallets.db
-
+cache_compound.json
 __pycache__/
 venv/
