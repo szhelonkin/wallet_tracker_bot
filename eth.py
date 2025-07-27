@@ -5,9 +5,6 @@ import asyncio
 RPC_HTTP = "https://eth-mainnet.g.alchemy.com/v2/4T2FGg31ChPTZ2bQML9iW"
 w3 = Web3(Web3.HTTPProvider(RPC_HTTP))
 
-def is_addr_eth(addr):
-    return addr.startswith("0x")
-
 def fetch_balance_eth(addr):
     balance_wei = w3.eth.get_balance(addr)
     return w3.from_wei(balance_wei, "ether")

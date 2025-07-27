@@ -8,9 +8,9 @@ from telegram import Update, BotCommand
 from telegram.ext import Application, CommandHandler, ContextTypes
 import locale
 
-from db import init_db_sync, add_address, remove_address, list_addresses
+from db import init_db_sync, add_address, remove_address, list_addresses, filter_btc_addresses, filter_eth_addresses, is_addr_eth
 from btc import get_balances_btc, fetch_balance_btc, satoshi_to_btc
-from eth import is_addr_eth, fetch_balance_eth, get_balances_eth
+from eth import fetch_balance_eth, get_balances_eth
 from cg import get_prices
 
 # ---------- базовая настройка ----------
@@ -87,20 +87,6 @@ async def balance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.message.reply_text(f"⛔️ Ошибка API: {e.response.status_code}")
     except Exception as e:
         await update.message.reply_text(f"⚠️ Что‑то пошло не так: {e}")
-
-def filter_btc_addresses(addrs):
-	btc_addrs = []
-	for addr in addrs:
-		if is_addr_eth(addr) == False:
-			btc_addrs.append(addr)
-	return btc_addrs
-
-def filter_eth_addresses(addrs):
-	eth_addrs = []
-	for addr in addrs:
-		if is_addr_eth(addr) == True:
-			eth_addrs.append(addr)
-	return eth_addrs
 
 async def portfolio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text("⏳ Считаю портфель…")

@@ -51,3 +51,28 @@ async def list_addresses(user_id: int) -> list[str]:
         )
         rows = await cur.fetchall()
         return [r[0] for r in rows]
+
+def is_addr_eth(addr):
+    return addr.startswith("0x")
+
+async def list_addresses_all() -> list[str]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            "SELECT address FROM user_addresses"
+        )
+        rows = await cur.fetchall()
+        return [r[0] for r in rows]
+
+def filter_btc_addresses(addrs):
+    btc_addrs = []
+    for addr in addrs:
+        if is_addr_eth(addr) == False:
+            btc_addrs.append(addr)
+    return btc_addrs
+
+def filter_eth_addresses(addrs):
+    eth_addrs = []
+    for addr in addrs:
+        if is_addr_eth(addr) == True:
+            eth_addrs.append(addr)
+    return eth_addrs

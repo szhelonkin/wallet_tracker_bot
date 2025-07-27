@@ -79,16 +79,16 @@ def fetch_comet_position(comet_addr: str, account: str):
 
     return base_symbol, supplied, borrowed, positions
 
-if __name__ == "__main__":
-    base_sym, supplied, borrowed, collats = fetch_comet_position(COMET, USER)
+#if __name__ == "__main__":
+#    base_sym, supplied, borrowed, collats = fetch_comet_position(COMET, USER)
 
-    print(f"\n💳  Compound v3 (USDT) позиция аккаунта {USER[:8]}…")
-    print(f"  {base_sym} supplied : {supplied:.6f}")
-    print(f"  {base_sym} borrowed : {borrowed:.6f}")
+#    print(f"\n💳  Compound v3 (USDT) позиция аккаунта {USER[:8]}…")
+#    print(f"  {base_sym} supplied : {supplied:.6f}")
+#    print(f"  {base_sym} borrowed : {borrowed:.6f}")
 
-    if collats:
-        print("  ─ Collateral ─")
-        for sym, amt in collats:
-            print(f"    {sym:<6} : {amt:.6f}")
-    else:
-        print("  No collateral deposited.")
+#    if collats:
+#        print("  ─ Collateral ─")
+#        for sym, amt in collats:
+#            print(f"    {sym:<6} : {amt:.6f}")
+#    else:
+#        print("  No collateral deposited.")
