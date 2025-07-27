@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from telegram import Update, BotCommand
 from telegram.ext import Application, CommandHandler, ContextTypes
 import locale
+from datetime import datetime
 
 from db import init_db_sync, add_address, remove_address, list_addresses, filter_btc_addresses, filter_eth_addresses, is_addr_eth
 from btc import get_balances_btc, fetch_balance_btc, satoshi_to_btc
@@ -144,12 +145,18 @@ async def portfolio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     lines.append("Compound USDT")
     with open('./cache_compound.json', 'r') as file:
         data_compound = json.load(file)
-    #print(prices)
+    now = datetime.now()
+    file_time = datetime.strptime(data_compound["time"], "%Y-%m-%d %H:%M:%S.%f")
+    diff = now - file_time
+    diff_secons = diff.seconds
     total_usdt = 0
     for addr in eth_addrs:
         supplied_usdt = Decimal(data_compound["addresses"][addr]["supplied"])
         total_usdt += supplied_usdt
-        lines.append(f"`{addr[:10]}…` — {supplied_usdt:.0f} ₮")
+        if diff_secons > 36000:
+            lines.append(f"⚠️ `{addr[:10]}…` — {supplied_usdt:.0f} ₮")
+        else:
+            lines.append(f"`{addr[:10]}…` — {supplied_usdt:.0f} ₮")
     price_usdt_usd = Decimal(prices["tether"]['usd'])
     price_usdt_rub = Decimal(prices["tether"]['rub'])
     total_usd_usdt = total_usdt * price_usdt_usd
