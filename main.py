@@ -108,7 +108,7 @@ async def portfolio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             total_sat += bal
             lines.append(f"`{addr[:10]}…` — {satoshi_to_btc(bal):.4f} ฿")
 
-    prices = get_prices("bitcoin,ethereum", "usd,rub")
+    prices = get_prices("bitcoin,ethereum,tether", "usd,rub")
     total_btc = satoshi_to_btc(total_sat)
     price_btc_usd = Decimal(prices["bitcoin"]['usd'])
     price_btc_rub = Decimal(prices["bitcoin"]['rub'])
@@ -141,10 +141,30 @@ async def portfolio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     lines.append("")
     lines.append("*DeFi*")
+    lines.append("Compound USDT")
+    with open('./cache_compound.json', 'r') as file:
+        data_compound = json.load(file)
+    #print(prices)
+    total_usdt = 0
+    for addr in eth_addrs:
+        supplied_usdt = Decimal(data_compound["addresses"][addr]["supplied"])
+        total_usdt += supplied_usdt
+        lines.append(f"`{addr[:10]}…` — {supplied_usdt:.0f} ₮")
+    price_usdt_usd = Decimal(prices["tether"]['usd'])
+    price_usdt_rub = Decimal(prices["tether"]['rub'])
+    total_usd_usdt = total_usdt * price_usdt_usd
+    total_rub_usdt = total_usdt * price_usdt_rub
+
+    lines.append(f"Цена  {format_num(price_usdt_usd)} $  {format_num(price_usdt_rub)} ₽")
+    lines.append("────────────────────────")
+    lines.append(f"*USDT:*  {total_usdt:.0f} Ξ  {format_num(total_usd_usdt)} $  {format_num(total_rub_usdt)} ₽")
+
 
     lines.append("")
     total_usd += total_usd_eth
     total_rub += total_rub_eth
+    total_usd += total_usd_usdt
+    total_rub += total_rub_usdt
     lines.append("────────────────────────")
     lines.append(f"*Итого:*  {format_num(total_usd)} $  {format_num(total_rub)} ₽")
 
