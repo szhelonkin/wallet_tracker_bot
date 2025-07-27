@@ -27,7 +27,7 @@ COMMANDS = [
     BotCommand("add",       "Добавить BTC‑адрес"),
     BotCommand("remove",    "Удалить адрес"),
     BotCommand("balance",   "Баланс отдельного адреса"),
-    BotCommand("help",      "Справка"),
+    BotCommand("start",      "Справка"),
 ]
 
 def format_num(num):
