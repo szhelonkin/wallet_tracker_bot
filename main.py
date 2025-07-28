@@ -202,7 +202,7 @@ async def portfolio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     alt_rub += total_rub_pendle
 
     lines.append("────────────────────────")
-    lines.append(f"*BTC:*  {total_btc:.2f} ฿  {format_num(total_usd)} $  {format_num(total_rub)} ₽")
+    lines.append(f"*BTC:*  {format_num(total_usd)} $  {format_num(total_rub)} ₽")
     lines.append("────────────────────────")
     lines.append(f"*Альты:*  {format_num(alt_usd)} $  {format_num(alt_rub)} ₽")
 
