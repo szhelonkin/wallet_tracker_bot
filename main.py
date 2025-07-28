@@ -13,6 +13,7 @@ from datetime import datetime
 from db import init_db_sync, add_address, remove_address, list_addresses, filter_btc_addresses, filter_eth_addresses, is_addr_eth
 from btc import get_balances_btc, fetch_balance_btc, satoshi_to_btc
 from eth import fetch_balance_eth, get_balances_eth
+from pendle import fetch_pendle_position
 from cg import get_prices
 
 # ---------- базовая настройка ----------
@@ -26,8 +27,9 @@ locale.setlocale(locale.LC_ALL, '')
 
 COMMANDS = [
     BotCommand("portfolio", "Показать баланс портфеля"),
-    BotCommand("add",       "Добавить BTC‑адрес"),
+    BotCommand("add",       "Добавить BTC ETH‑адрес"),
     BotCommand("remove",    "Удалить адрес"),
+    BotCommand("addrlist",      "Список адресов"),
     BotCommand("balance",   "Баланс отдельного адреса"),
     BotCommand("help",      "Справка"),
 ]
@@ -49,6 +51,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "Привет!\n"
         "/add <addr> — добавить адрес\n"
         "/remove <addr> — удалить адрес\n"
+        "/addrlist - список адресов"
         "/portfolio — показать баланс портфеля\n"
         "Для одиночного адреса можешь использовать /balance <addr>."
     )
@@ -70,6 +73,17 @@ async def remove_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     ok = await remove_address(update.effective_user.id, addr)
     msg = "🗑️ Удалил." if ok else "🤷 Адрес не найден в твоём списке."
     await update.message.reply_text(msg)
+
+async def addrlist_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    lines = []
+    addrs = await list_addresses(update.effective_user.id)
+    for addr in addrs:
+    	lines.append(addr)
+    if len(lines) == 0:
+    	lines = ["У тебя пока нет адресов. Добавь через /add."]
+    await update.message.reply_text(
+        "\n".join(lines), parse_mode="Markdown"
+    )
 
 async def balance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not context.args:
@@ -166,12 +180,35 @@ async def portfolio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     lines.append("────────────────────────")
     lines.append(f"*USDT:*  {total_usdt:.0f} Ξ  {format_num(total_usd_usdt)} $  {format_num(total_rub_usdt)} ₽")
 
+    lines.append("")
+    lines.append("Pendle USD")
+    total_usd_pendle = 0
+    for addr in eth_addrs:
+        supplied_pendle_usd = fetch_pendle_position(addr)
+        total_usd_pendle += supplied_pendle_usd 
+        lines.append(f"`{addr[:10]}…` — {supplied_pendle_usd:.0f} $")
+    total_rub_pendle = total_usd_pendle * price_usdt_rub
+    lines.append("────────────────────────")
+    lines.append(f"*Pendle USD:*  {format_num(total_usd_pendle)} $  {format_num(total_rub_pendle)} ₽")
 
     lines.append("")
-    total_usd += total_usd_eth
-    total_rub += total_rub_eth
-    total_usd += total_usd_usdt
-    total_rub += total_rub_usdt
+    alt_usd = 0
+    alt_rub = 0
+    alt_usd += total_usd_eth
+    alt_rub += total_rub_eth
+    alt_usd += total_usd_usdt
+    alt_rub += total_rub_usdt
+    alt_usd += total_usd_pendle
+    alt_rub += total_rub_pendle
+
+    lines.append("────────────────────────")
+    lines.append(f"*BTC:*  {total_btc:.2f} ฿  {format_num(total_usd)} $  {format_num(total_rub)} ₽")
+    lines.append("────────────────────────")
+    lines.append(f"*Альты:*  {format_num(alt_usd)} $  {format_num(alt_rub)} ₽")
+
+    total_usd += alt_usd
+    total_rub += alt_rub
+    
     lines.append("────────────────────────")
     lines.append(f"*Итого:*  {format_num(total_usd)} $  {format_num(total_rub)} ₽")
 
@@ -190,6 +227,7 @@ def main() -> None:
     application.add_handler(CommandHandler("help", start))
     application.add_handler(CommandHandler("add", add_cmd))
     application.add_handler(CommandHandler("remove", remove_cmd))
+    application.add_handler(CommandHandler("addrlist", addrlist_cmd))
     application.add_handler(CommandHandler("balance", balance_cmd))
     application.add_handler(CommandHandler("portfolio", portfolio_cmd))
 
