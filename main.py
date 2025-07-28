@@ -176,7 +176,7 @@ async def portfolio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     total_usd_usdt = total_usdt * price_usdt_usd
     total_rub_usdt = total_usdt * price_usdt_rub
 
-    lines.append(f"Цена  {format_num(price_usdt_usd)} $  {format_num(price_usdt_rub)} ₽")
+    lines.append(f"Цена  {format_num(price_usdt_usd):.2f} $  {format_num(price_usdt_rub):.2f} ₽")
     lines.append("────────────────────────")
     lines.append(f"*USDT:*  {total_usdt:.0f} Ξ  {format_num(total_usd_usdt)} $  {format_num(total_rub_usdt)} ₽")
 
