@@ -15,6 +15,7 @@ from btc import get_balances_btc, fetch_balance_btc, satoshi_to_btc
 from eth import fetch_balance_eth, get_balances_eth
 from pendle import fetch_pendle_position
 from cg import get_prices
+from euler import single_vault_position
 
 # ---------- базовая настройка ----------
 load_dotenv()
@@ -192,6 +193,19 @@ async def portfolio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     lines.append(f"*Pendle USD:*  {format_num(total_usd_pendle)} $  {format_num(total_rub_pendle)} ₽")
 
     lines.append("")
+    lines.append("Euler USD")
+    total_eth_euler = 0
+    total_usd_euler = 0
+    for addr in eth_addrs:
+        supplied_euler_eth = single_vault_position(addr, "0xD8b27CF359b7D15710a5BE299AF6e7Bf904984C2")
+        total_eth_euler += supplied_euler_eth
+        total_usd_euler += supplied_euler_eth * price_eth_usd 
+        lines.append(f"`{addr[:10]}…` — {supplied_euler_eth:.0f} Ξ")
+    total_rub_euler = total_usd_euler * price_usdt_rub
+    lines.append("────────────────────────")
+    lines.append(f"*Euler:*  {total_eth_euler:.2f} Ξ  {format_num(total_usd_euler)} $  {format_num(total_rub_euler)} ₽")
+
+    lines.append("")
     alt_usd = 0
     alt_rub = 0
     alt_usd += total_usd_eth
@@ -200,6 +214,8 @@ async def portfolio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     alt_rub += total_rub_usdt
     alt_usd += total_usd_pendle
     alt_rub += total_rub_pendle
+    alt_usd += total_usd_euler
+    alt_rub += total_rub_euler
 
     lines.append("────────────────────────")
     lines.append(f"*BTC:*  {format_num(total_usd)} $  {format_num(total_rub)} ₽")
