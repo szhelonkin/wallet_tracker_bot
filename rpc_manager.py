@@ -15,15 +15,15 @@ class RPCManager:
     """Manages multiple RPC endpoints with automatic failover and rate limiting handling."""
     
     def __init__(self):
-        # List of RPC endpoints with fallbacks
+        # List of RPC endpoints with fallbacks (prioritize working ones)
         self.rpc_endpoints = [
+            "https://ethereum.publicnode.com",  # Public node (working, no auth required)
             "https://eth-mainnet.g.alchemy.com/v2/4T2FGg31ChPTZ2bQML9iW",  # Primary Alchemy
-            "https://ethereum.publicnode.com",  # Public node (no auth required)
-            "https://eth.llamarpc.com",  # LlamaRPC (no auth required)
-            "https://ethereum.blockpi.network/v1/rpc/public",  # BlockPI (no auth required)
-            "https://eth-mainnet.public.blastapi.io",  # BlastAPI (no auth required)
-            "https://rpc.ankr.com/eth",  # Ankr public RPC (may require auth)
             "https://eth-mainnet.g.alchemy.com/v2/demo",  # Alchemy demo (rate limited but free)
+            "https://eth.llamarpc.com",  # LlamaRPC (may require auth)
+            "https://ethereum.blockpi.network/v1/rpc/public",  # BlockPI (may timeout)
+            "https://eth-mainnet.public.blastapi.io",  # BlastAPI (may have issues)
+            "https://rpc.ankr.com/eth",  # Ankr public RPC (requires auth)
         ]
         
         self.current_endpoint_index = 0
@@ -41,8 +41,23 @@ class RPCManager:
     
     def _switch_to_next_endpoint(self):
         """Switch to the next available RPC endpoint."""
-        self.current_endpoint_index = (self.current_endpoint_index + 1) % len(self.rpc_endpoints)
-        logger.info(f"Switched to RPC endpoint: {self._get_current_endpoint()}")
+        # Try to find an available endpoint
+        original_index = self.current_endpoint_index
+        attempts = 0
+        
+        while attempts < len(self.rpc_endpoints):
+            self.current_endpoint_index = (self.current_endpoint_index + 1) % len(self.rpc_endpoints)
+            current_endpoint = self._get_current_endpoint()
+            
+            if self._is_endpoint_available(current_endpoint):
+                logger.info(f"Switched to available RPC endpoint: {current_endpoint}")
+                return
+            
+            attempts += 1
+        
+        # If no available endpoint found, reset to original and log warning
+        self.current_endpoint_index = original_index
+        logger.warning(f"No available endpoints found, staying on: {self._get_current_endpoint()}")
     
     def _is_endpoint_available(self, endpoint: str) -> bool:
         """Check if an endpoint is available (not rate limited)."""
@@ -53,9 +68,9 @@ class RPCManager:
         self.rate_limited_endpoints.add(endpoint)
         logger.warning(f"Marked endpoint as rate limited: {endpoint}")
         
-        # Remove from rate limited set after 5 minutes
+        # Remove from rate limited set after 2 minutes (shorter timeout)
         def remove_from_rate_limited():
-            time.sleep(300)  # 5 minutes
+            time.sleep(120)  # 2 minutes
             self.rate_limited_endpoints.discard(endpoint)
             logger.info(f"Removed rate limit from endpoint: {endpoint}")
         
@@ -228,27 +243,32 @@ class RPCManager:
         
         return balance_dict
     
-    async def get_vault_positions_concurrent(self, addresses: List[str], vault_address: str, contract_func) -> Dict[str, Any]:
+    async def get_vault_positions_concurrent(self, addresses: List[str], vault_address: str, contract_address: str, contract_abi: list) -> Dict[str, Any]:
         """Get vault positions for multiple addresses concurrently."""
         async def _get_single_position(address: str):
             try:
-                w3_instance = self.get_web3_instance()
-                # Recreate the contract with the new Web3 instance
-                lens_contract = w3_instance.eth.contract(
-                    address=contract_func.contract.address,
-                    abi=contract_func.contract.abi
-                )
+                # Run the synchronous call in a thread
+                def _sync_call():
+                    w3_instance = self.get_web3_instance()
+                    # Recreate the contract with the new Web3 instance
+                    lens_contract = w3_instance.eth.contract(
+                        address=contract_address,
+                        abi=contract_abi
+                    )
+                    
+                    # Make the call with retry logic
+                    def _call():
+                        return lens_contract.functions.getAccountInfo(
+                            w3_instance.to_checksum_address(address),
+                            w3_instance.to_checksum_address(vault_address)
+                        ).call()
+                    
+                    result = self._make_request_with_retry(_call)
+                    assets = w3_instance.from_wei(result[1][6], "ether")
+                    return address, assets
                 
-                # Make the call with retry logic
-                def _call():
-                    return lens_contract.functions.getAccountInfo(
-                        w3_instance.to_checksum_address(address),
-                        w3_instance.to_checksum_address(vault_address)
-                    ).call()
-                
-                result = self._make_request_with_retry(_call)
-                assets = w3_instance.from_wei(result[1][6], "ether")
-                return address, assets
+                # Run in thread to avoid blocking
+                return await asyncio.to_thread(_sync_call)
             except Exception as e:
                 logger.error(f"Error getting vault position for {address}: {e}")
                 return address, 0
@@ -269,6 +289,11 @@ class RPCManager:
             position_dict[address] = position
         
         return position_dict
+    
+    def clear_rate_limits(self):
+        """Clear all rate limits (useful for testing)."""
+        self.rate_limited_endpoints.clear()
+        logger.info("Cleared all rate limits")
 
 # Global RPC manager instance
 rpc_manager = RPCManager()
@@ -289,6 +314,6 @@ async def get_balances_concurrent(addresses: List[str]) -> Dict[str, Any]:
     """Get balances for multiple addresses concurrently."""
     return await rpc_manager.get_balances_concurrent(addresses)
 
-async def get_vault_positions_concurrent(addresses: List[str], vault_address: str, contract_func) -> Dict[str, Any]:
+async def get_vault_positions_concurrent(addresses: List[str], vault_address: str, contract_address: str, contract_abi: list) -> Dict[str, Any]:
     """Get vault positions for multiple addresses concurrently."""
-    return await rpc_manager.get_vault_positions_concurrent(addresses, vault_address, contract_func)
+    return await rpc_manager.get_vault_positions_concurrent(addresses, vault_address, contract_address, contract_abi)

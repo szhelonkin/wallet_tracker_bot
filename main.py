@@ -207,11 +207,12 @@ async def portfolio_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         # Use concurrent vault position fetching for much faster performance
         if eth_addrs:
             try:
-                from euler import lens
+                from euler import ACCOUNT_LENS, ABI
                 euler_positions = await get_vault_positions_concurrent(
                     eth_addrs, 
                     "0xD8b27CF359b7D15710a5BE299AF6e7Bf904984C2", 
-                    lens.functions.getAccountInfo
+                    ACCOUNT_LENS,
+                    ABI
                 )
                 
                 for addr in eth_addrs:
