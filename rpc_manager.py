@@ -1,10 +1,13 @@
 import time
 import random
-from typing import List, Optional
+import asyncio
+from typing import List, Optional, Dict, Any
 from web3 import Web3, HTTPProvider
 from web3.exceptions import Web3Exception
 import requests
 import logging
+from functools import lru_cache
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +29,11 @@ class RPCManager:
         self.current_endpoint_index = 0
         self.rate_limited_endpoints = set()
         self.last_request_time = 0
-        self.min_request_interval = 0.1  # Minimum 100ms between requests
+        self.min_request_interval = 0.01  # Reduced to 10ms between requests
+        self.request_lock = threading.Lock()
+        self.endpoint_locks = {endpoint: threading.Lock() for endpoint in self.rpc_endpoints}
+        self.cache = {}
+        self.cache_ttl = 30  # Cache for 30 seconds
         
     def _get_current_endpoint(self) -> str:
         """Get the current active RPC endpoint."""
@@ -55,34 +62,74 @@ class RPCManager:
         import threading
         threading.Thread(target=remove_from_rate_limited, daemon=True).start()
     
-    def _rate_limit_delay(self):
-        """Add delay to respect rate limits."""
-        current_time = time.time()
-        time_since_last_request = current_time - self.last_request_time
-        
-        if time_since_last_request < self.min_request_interval:
-            sleep_time = self.min_request_interval - time_since_last_request
-            time.sleep(sleep_time)
-        
-        self.last_request_time = time.time()
+    def _get_cache_key(self, func_name: str, *args, **kwargs) -> str:
+        """Generate cache key for function call."""
+        key_parts = [func_name] + [str(arg) for arg in args] + [f"{k}={v}" for k, v in sorted(kwargs.items())]
+        return "|".join(key_parts)
     
-    def _make_request_with_retry(self, func, *args, max_retries=3, **kwargs):
-        """Make a request with automatic retry and endpoint switching."""
+    def _is_cache_valid(self, cache_key: str) -> bool:
+        """Check if cache entry is still valid."""
+        if cache_key not in self.cache:
+            return False
+        cache_time, _ = self.cache[cache_key]
+        return time.time() - cache_time < self.cache_ttl
+    
+    def _get_from_cache(self, cache_key: str) -> Any:
+        """Get value from cache if valid."""
+        if self._is_cache_valid(cache_key):
+            _, value = self.cache[cache_key]
+            return value
+        return None
+    
+    def _set_cache(self, cache_key: str, value: Any):
+        """Set value in cache."""
+        self.cache[cache_key] = (time.time(), value)
+    
+    def _rate_limit_delay(self, endpoint: str):
+        """Add delay to respect rate limits per endpoint."""
+        with self.endpoint_locks[endpoint]:
+            current_time = time.time()
+            last_time_key = f"{endpoint}_last_request"
+            
+            if last_time_key in self.cache:
+                last_request_time, _ = self.cache[last_time_key]
+                time_since_last_request = current_time - last_request_time
+                
+                if time_since_last_request < self.min_request_interval:
+                    sleep_time = self.min_request_interval - time_since_last_request
+                    time.sleep(sleep_time)
+            
+            self.cache[last_time_key] = (current_time, None)
+    
+    def _make_request_with_retry(self, func, *args, max_retries=3, use_cache=True, **kwargs):
+        """Make a request with automatic retry, endpoint switching, and caching."""
+        # Check cache first
+        if use_cache:
+            cache_key = self._get_cache_key(func.__name__, *args, **kwargs)
+            cached_result = self._get_from_cache(cache_key)
+            if cached_result is not None:
+                return cached_result
+        
         last_exception = None
         
         for attempt in range(max_retries):
             try:
-                # Rate limiting delay
-                self._rate_limit_delay()
-                
                 # Try current endpoint
                 current_endpoint = self._get_current_endpoint()
                 if not self._is_endpoint_available(current_endpoint):
                     self._switch_to_next_endpoint()
                     continue
                 
+                # Rate limiting delay per endpoint
+                self._rate_limit_delay(current_endpoint)
+                
                 # Make the request
                 result = func(*args, **kwargs)
+                
+                # Cache the result
+                if use_cache:
+                    self._set_cache(cache_key, result)
+                
                 return result
                 
             except requests.exceptions.HTTPError as e:
@@ -148,6 +195,80 @@ class RPCManager:
             return w3.eth.chain_id
         
         return self._make_request_with_retry(_get_chain_id)
+    
+    async def get_balances_concurrent(self, addresses: List[str]) -> Dict[str, Any]:
+        """Get balances for multiple addresses concurrently."""
+        async def _get_single_balance(address: str):
+            def _get_balance():
+                w3 = self.get_web3_instance()
+                balance_wei = w3.eth.get_balance(address)
+                # Convert wei to ETH
+                return w3.from_wei(balance_wei, "ether")
+            
+            try:
+                return address, self._make_request_with_retry(_get_balance)
+            except Exception as e:
+                logger.error(f"Error getting balance for {address}: {e}")
+                return address, 0
+        
+        # Create tasks for all addresses
+        tasks = [_get_single_balance(addr) for addr in addresses]
+        
+        # Execute concurrently
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Process results
+        balance_dict = {}
+        for result in results:
+            if isinstance(result, Exception):
+                logger.error(f"Task failed: {result}")
+                continue
+            address, balance = result
+            balance_dict[address] = balance
+        
+        return balance_dict
+    
+    async def get_vault_positions_concurrent(self, addresses: List[str], vault_address: str, contract_func) -> Dict[str, Any]:
+        """Get vault positions for multiple addresses concurrently."""
+        async def _get_single_position(address: str):
+            try:
+                w3_instance = self.get_web3_instance()
+                # Recreate the contract with the new Web3 instance
+                lens_contract = w3_instance.eth.contract(
+                    address=contract_func.contract.address,
+                    abi=contract_func.contract.abi
+                )
+                
+                # Make the call with retry logic
+                def _call():
+                    return lens_contract.functions.getAccountInfo(
+                        w3_instance.to_checksum_address(address),
+                        w3_instance.to_checksum_address(vault_address)
+                    ).call()
+                
+                result = self._make_request_with_retry(_call)
+                assets = w3_instance.from_wei(result[1][6], "ether")
+                return address, assets
+            except Exception as e:
+                logger.error(f"Error getting vault position for {address}: {e}")
+                return address, 0
+        
+        # Create tasks for all addresses
+        tasks = [_get_single_position(addr) for addr in addresses]
+        
+        # Execute concurrently
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Process results
+        position_dict = {}
+        for result in results:
+            if isinstance(result, Exception):
+                logger.error(f"Task failed: {result}")
+                continue
+            address, position = result
+            position_dict[address] = position
+        
+        return position_dict
 
 # Global RPC manager instance
 rpc_manager = RPCManager()
@@ -163,3 +284,11 @@ def call_contract_with_retry(contract_func, *args, **kwargs):
 def get_balance_with_retry(address: str):
     """Get ETH balance with automatic retry and endpoint switching."""
     return rpc_manager.get_balance(address)
+
+async def get_balances_concurrent(addresses: List[str]) -> Dict[str, Any]:
+    """Get balances for multiple addresses concurrently."""
+    return await rpc_manager.get_balances_concurrent(addresses)
+
+async def get_vault_positions_concurrent(addresses: List[str], vault_address: str, contract_func) -> Dict[str, Any]:
+    """Get vault positions for multiple addresses concurrently."""
+    return await rpc_manager.get_vault_positions_concurrent(addresses, vault_address, contract_func)

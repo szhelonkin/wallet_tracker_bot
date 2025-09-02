@@ -15,9 +15,9 @@ def fetch_balance_eth(addr):
 
 async def get_balances_eth(addresses: list[str]) -> dict[str, int]:
     """Асинхронно получаем балансы всех адресов."""
-    tasks = [asyncio.to_thread(fetch_balance_eth, a) for a in addresses]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    return dict(zip(addresses, results))
+    # Use the new concurrent method from RPC manager for better performance
+    from rpc_manager import get_balances_concurrent
+    return await get_balances_concurrent(addresses)
 
 #async def main() -> None:
     #print("eth module")
