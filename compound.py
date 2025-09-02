@@ -2,12 +2,12 @@ import os
 import asyncio
 from decimal import Decimal
 from web3 import Web3, HTTPProvider
+from rpc_manager import get_web3, call_contract_with_retry
 
-RPC_HTTP = "https://eth-mainnet.g.alchemy.com/v2/4T2FGg31ChPTZ2bQML9iW"
 USER     = Web3.to_checksum_address("0x0C8eb038c58E0a9d8D66Bf5805A6eC0dfDaE6c4c")
 COMET    = Web3.to_checksum_address("0x3Afdc9BCA9213A35503b077a6072F3D0d5AB0840")
 
-w3 = Web3(Web3.HTTPProvider(RPC_HTTP))
+w3 = get_web3()
 
 # ─────── ABI-фрагменты ровно под нужные вызовы ───────
 COMET_ABI = [
@@ -51,33 +51,68 @@ def scale(value: int, factor: int) -> Decimal:
     return Decimal(value) / Decimal(factor)
 
 def fetch_comet_position(comet_addr: str, account: str):
-    comet = w3.eth.contract(address=comet_addr, abi=COMET_ABI)
+    try:
+        from rpc_manager import rpc_manager
+        
+        # Get a fresh Web3 instance
+        w3_instance = rpc_manager.get_web3_instance()
+        comet = w3_instance.eth.contract(address=comet_addr, abi=COMET_ABI)
 
-    # ── база (USDC) ────────────────────────────
-    base_token  = comet.functions.baseToken().call()
-    base_scale  = comet.functions.baseScale().call()        # 10**dec
-    erc20       = w3.eth.contract(address=base_token, abi=ERC20_ABI)
-    base_symbol = erc20.functions.symbol().call()
+        # ── база (USDC) ────────────────────────────
+        def _get_base_token():
+            return comet.functions.baseToken().call()
+        base_token = rpc_manager._make_request_with_retry(_get_base_token)
+        
+        def _get_base_scale():
+            return comet.functions.baseScale().call()
+        base_scale = rpc_manager._make_request_with_retry(_get_base_scale)
+        
+        erc20 = w3_instance.eth.contract(address=base_token, abi=ERC20_ABI)
+        
+        def _get_symbol():
+            return erc20.functions.symbol().call()
+        base_symbol = rpc_manager._make_request_with_retry(_get_symbol)
 
-    supplied   = scale(comet.functions.balanceOf(account).call(), base_scale)
-    borrowed   = scale(comet.functions.borrowBalanceOf(account).call(), base_scale)
+        def _get_balance():
+            return comet.functions.balanceOf(account).call()
+        supplied = scale(rpc_manager._make_request_with_retry(_get_balance), base_scale)
+        
+        def _get_borrow_balance():
+            return comet.functions.borrowBalanceOf(account).call()
+        borrowed = scale(rpc_manager._make_request_with_retry(_get_borrow_balance), base_scale)
 
-    # ── коллатерали ────────────────────────────
-    positions  = []
-    n_assets   = comet.functions.numAssets().call()
-    for i in range(n_assets):
-        info   = comet.functions.getAssetInfo(i).call()
-        asset  = info[1]
-        scale_ = info[3]                            # uint64, обычно 10**dec
-        bal    = comet.functions.collateralBalanceOf(account, asset).call()
-        if bal == 0:
-            continue
+        # ── коллатерали ────────────────────────────
+        positions = []
+        
+        def _get_num_assets():
+            return comet.functions.numAssets().call()
+        n_assets = rpc_manager._make_request_with_retry(_get_num_assets)
+        
+        for i in range(n_assets):
+            def _get_asset_info():
+                return comet.functions.getAssetInfo(i).call()
+            info = rpc_manager._make_request_with_retry(_get_asset_info)
+            asset = info[1]
+            scale_ = info[3]
+            
+            def _get_collateral_balance():
+                return comet.functions.collateralBalanceOf(account, asset).call()
+            bal = rpc_manager._make_request_with_retry(_get_collateral_balance)
+            
+            if bal == 0:
+                continue
 
-        erc20  = w3.eth.contract(asset, ERC20_ABI)
-        symbol = erc20.functions.symbol().call()
-        positions.append((symbol, scale(bal, scale_)))
+            erc20 = w3_instance.eth.contract(asset, ERC20_ABI)
+            
+            def _get_asset_symbol():
+                return erc20.functions.symbol().call()
+            symbol = rpc_manager._make_request_with_retry(_get_asset_symbol)
+            positions.append((symbol, scale(bal, scale_)))
 
-    return base_symbol, supplied, borrowed, positions
+        return base_symbol, supplied, borrowed, positions
+    except Exception as e:
+        print(f"Error fetching comet position for {account}: {e}")
+        return "USDC", 0, 0, []
 
 #if __name__ == "__main__":
 #    base_sym, supplied, borrowed, collats = fetch_comet_position(COMET, USER)

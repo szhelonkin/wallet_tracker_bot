@@ -1,13 +1,17 @@
 import os
 from web3 import Web3
 import asyncio
+from rpc_manager import get_web3, get_balance_with_retry
 
-RPC_HTTP = "https://eth-mainnet.g.alchemy.com/v2/4T2FGg31ChPTZ2bQML9iW"
-w3 = Web3(Web3.HTTPProvider(RPC_HTTP))
+w3 = get_web3()
 
 def fetch_balance_eth(addr):
-    balance_wei = w3.eth.get_balance(addr)
-    return w3.from_wei(balance_wei, "ether")
+    try:
+        balance_wei = get_balance_with_retry(addr)
+        return w3.from_wei(balance_wei, "ether")
+    except Exception as e:
+        print(f"Error getting ETH balance for {addr}: {e}")
+        return 0
 
 async def get_balances_eth(addresses: list[str]) -> dict[str, int]:
     """Асинхронно получаем балансы всех адресов."""
